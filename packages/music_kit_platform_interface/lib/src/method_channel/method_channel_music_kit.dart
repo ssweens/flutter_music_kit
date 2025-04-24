@@ -17,14 +17,6 @@ class MethodChannelMusicKit extends MusicKitPlatform {
   final musicSubcriptionEventChannel = const EventChannel('plugins.misi.app/music_kit/music_subscription');
 
   @override
-  Future<void> initialize(String developerToken, {String? musicUserToken}) async {
-    return methodChannel.invokeMethod(
-      'initialize',
-      {'developerToken': developerToken, 'musicUserToken': musicUserToken},
-    );
-  }
-
-  @override
   Future<MusicAuthorizationStatus> requestAuthorizationStatus({String? startScreenMessage}) async {
     try {
       final resp = await methodChannel
@@ -240,7 +232,9 @@ MusicAuthorizationStatus _authorizationStatusfromRawValue(int rawValue, {String?
       return MusicAuthorizationStatusNotDetermined();
     case 3:
       return MusicAuthorizationStatusRestricted();
+    case 4:
+      return MusicAuthorizationStatusExpired();
     default:
-      return MusicAuthorizationStatusInitial();
+      return MusicAuthorizationStatusNotDetermined();
   }
 }

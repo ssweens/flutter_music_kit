@@ -1,10 +1,12 @@
 package app.misi.music_kit
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.util.Log
 import androidx.annotation.Keep
 import app.misi.music_kit.AuthActivityResultHandler.Companion.ERR_REQUEST_USER_TOKEN
 import app.misi.music_kit.infrastructure.UserStorefrontRepository
+import app.misi.music_kit.util.AppleDeveloperToken
 import app.misi.music_kit.util.AppleMusicTokenProvider
 import app.misi.music_kit.util.Constant.LOG_TAG
 import com.apple.android.music.playback.controller.MediaPlayerController
@@ -31,7 +33,13 @@ class ChannelHandler(
     const val MUSIC_PLAYER_QUEUE_EVENT_CHANNEL_NAME = "plugins.misi.app/music_kit/player_queue"
 
     const val PARAM_DEVELOPER_TOKEN_KEY = "developerToken"
-    const val PARAM_MUSIC_USER_TOKEN_KEY = "musicUserToken"
+
+    const val PREFERENCES_FILE_KEY = "plugins.misi.app_music_kit_preferences"
+    const val PREFERENCES_KEY_MUSIC_USER_TOKEN = "musicUserToken"
+
+    const val METADATA_KEY_TEAMID = "music_kit.teamId"
+    const val METADATA_KEY_KEYID = "music_kit.keyId"
+    const val METADATA_KEY_KEY = "music_kit.key"
 
     const val ERR_NOT_INITIALIZED = "ERR_NOT_INITIALIZED"
   }
@@ -39,24 +47,51 @@ class ChannelHandler(
   private var methodChannel: MethodChannel? = null
   private var playerStateEventChannel: EventChannel? = null
   private var playerQueueEventChannel: EventChannel? = null
+  private var playerQueueStreamHandler: PlayerQueueStreamHandler? = null
+  private var playerStateStreamHandler: PlayerStateStreamHandler? = null
+
 
   private lateinit var developerToken: String
   private var musicUserToken: String? = null
     set(value) {
       field = value
+      fetchUserStorefrontAndStoreUserToken(value)
       createPlayerControllerIfSatisfied(value)
     }
 
-  private var storefrontId: String? = null
+  private var storefrontId: String = ""
 
   private var playerController: MediaPlayerController? = null
 
   private val coroutineScope = CoroutineScope(Dispatchers.IO)
 
+  init {
+    val appInfo = applicationContext.packageManager
+      .getApplicationInfo(applicationContext.packageName, PackageManager.GET_META_DATA)
+    val teamId = appInfo.metaData.getString(METADATA_KEY_TEAMID)!!
+    val keyId = appInfo.metaData.getString(METADATA_KEY_KEYID)!!
+    val key = appInfo.metaData.getString(METADATA_KEY_KEY)!!
+
+    Log.d(LOG_TAG,"init teamId: $teamId keyId: $keyId")
+
+    val apiToken = AppleDeveloperToken(key, keyId, teamId)
+    developerToken = apiToken.toString()
+
+    val token = applicationContext.getSharedPreferences(PREFERENCES_FILE_KEY, Context.MODE_PRIVATE)?.getString(
+      PREFERENCES_KEY_MUSIC_USER_TOKEN, null)
+    if (!token.isNullOrBlank()) {
+      musicUserToken = token
+    }
+
+    Log.d(LOG_TAG, "init developerToken: ${developerToken.length} musicUserToken: ${musicUserToken?.length ?: 0}")
+  }
+
   fun startListening(messenger: BinaryMessenger) {
     if (methodChannel != null
       || playerStateEventChannel != null
       || playerQueueEventChannel != null
+      || playerStateStreamHandler != null
+      || playerQueueStreamHandler != null
     ) {
       stopListening()
     }
@@ -65,12 +100,17 @@ class ChannelHandler(
       setMethodCallHandler(this@ChannelHandler)
     }
 
+    playerStateStreamHandler = PlayerStateStreamHandler()
     playerStateEventChannel = EventChannel(messenger, MUSIC_PLAYER_STATE_EVENT_CHANNEL_NAME)
+    playerStateEventChannel?.setStreamHandler(playerStateStreamHandler)
+
+    playerQueueStreamHandler = PlayerQueueStreamHandler()
     playerQueueEventChannel = EventChannel(messenger, MUSIC_PLAYER_QUEUE_EVENT_CHANNEL_NAME)
+    playerQueueEventChannel?.setStreamHandler(playerQueueStreamHandler)
 
     if (playerController != null) {
-      playerStateEventChannel?.setStreamHandler(PlayerStateStreamHandler(playerController))
-      playerQueueEventChannel?.setStreamHandler(PlayerQueueStreamHandler(playerController))
+      playerStateStreamHandler!!.setPlayerController(playerController!!)
+      playerQueueStreamHandler!!.setPlayerController(playerController!!)
     }
   }
 
@@ -80,11 +120,14 @@ class ChannelHandler(
 
     playerStateEventChannel?.setStreamHandler(null)
     playerStateEventChannel = null
+    playerStateStreamHandler = null
 
     playerQueueEventChannel?.setStreamHandler(null)
     playerQueueEventChannel = null
+    playerQueueStreamHandler = null
 
     playerController?.release()
+    playerController = null
   }
 
   fun cleanUp() {
@@ -92,13 +135,44 @@ class ChannelHandler(
   }
 
   private fun createPlayerControllerIfSatisfied(musicUserToken: String?) {
-    if (playerController == null && !musicUserToken.isNullOrBlank()) {
+    if (playerController == null && !musicUserToken.isNullOrBlank() && !storefrontId.isNullOrBlank()) {
       playerController = MediaPlayerControllerFactory.createLocalController(
         applicationContext,
         AppleMusicTokenProvider(developerToken, musicUserToken)
       )
-      playerStateEventChannel?.setStreamHandler(PlayerStateStreamHandler(playerController))
-      playerQueueEventChannel?.setStreamHandler(PlayerQueueStreamHandler(playerController))
+      playerStateStreamHandler?.setPlayerController(playerController!!)
+      playerQueueStreamHandler?.setPlayerController(playerController!!)
+    }
+  }
+
+  private fun fetchUserStorefrontAndStoreUserToken(musicUserToken: String?) {
+    val storefrontRepo = UserStorefrontRepository()
+
+    if (!musicUserToken.isNullOrBlank()) {
+      runBlocking {
+        val async = async(Dispatchers.IO) {
+          val response = storefrontRepo.getStorefrontId(developerToken, musicUserToken)
+          response.fold(
+            {
+              val sharedPref =
+                applicationContext.getSharedPreferences(PREFERENCES_FILE_KEY, Context.MODE_PRIVATE)
+              with(sharedPref!!.edit()) {
+                putString(PREFERENCES_KEY_MUSIC_USER_TOKEN, musicUserToken)
+                apply()
+              }
+
+              storefrontId = it
+            },
+            {
+              Log.e(LOG_TAG, "Error fetching storefront: ${it.message}")
+              storefrontId = ""
+            }
+          )
+        }
+        async.await()
+      }
+    } else {
+      storefrontId = ""
     }
   }
 
@@ -136,25 +210,17 @@ class ChannelHandler(
   }
 
   @Keep
-  fun initialize(call: MethodCall, result: MethodChannel.Result) {
-    developerToken = call.argument<String>(PARAM_DEVELOPER_TOKEN_KEY)!!
-    musicUserToken = call.argument<String>(PARAM_MUSIC_USER_TOKEN_KEY)
-
-    Log.d(LOG_TAG, "initialize() developerToken: ${developerToken.length} musicUserToken: ${musicUserToken?.length ?: 0}")
-
-    result.success(null)
-  }
-
-  @Keep
   @Suppress("unused", "UNUSED_PARAMETER")
   fun authorizationStatus(call: MethodCall, result: MethodChannel.Result) {
-    if (!musicUserToken.isNullOrBlank()) {
+    if (!musicUserToken.isNullOrBlank() && !storefrontId.isNullOrBlank()) {
       result.success(
         mapOf(
           "status" to 0,
           "musicUserToken" to musicUserToken,
         )
       ) //.authorized
+    } else if (!musicUserToken.isNullOrBlank()) {
+      result.success(mapOf("status" to 4)) // .expired
     } else {
       result.success(mapOf("status" to 2)) // .notDetermined
     }
@@ -163,7 +229,7 @@ class ChannelHandler(
   @Keep
   @Suppress("unused", "UNUSED_PARAMETER")
   fun requestAuthorizationStatus(call: MethodCall, result: MethodChannel.Result) {
-    if (!musicUserToken.isNullOrBlank()) {
+    if (!musicUserToken.isNullOrBlank() && !storefrontId.isNullOrBlank()) {
       result.success(
         mapOf(
           "status" to 0,
@@ -176,7 +242,7 @@ class ChannelHandler(
     if (!this::developerToken.isInitialized) {
       result.error(
         ERR_NOT_INITIALIZED,
-        "Must call initialize() before using MusicKit in Android",
+        "developer token not initialized - make sure teamId, keyId and key are configured correctly in android",
         mapOf("developerToken" to developerToken, "musicUserToken" to musicUserToken)
       )
       return
@@ -206,7 +272,7 @@ class ChannelHandler(
 
   @Keep
   fun requestUserToken(call: MethodCall, result: MethodChannel.Result) {
-    if (!musicUserToken.isNullOrBlank()) {
+    if (!musicUserToken.isNullOrBlank() && !storefrontId.isNullOrBlank()) {
       result.success(musicUserToken)
       return
     }
@@ -233,29 +299,13 @@ class ChannelHandler(
   @Keep
   @Suppress("unused", "UNUSED_PARAMETER")
   fun currentCountryCode(call: MethodCall, result: MethodChannel.Result) {
-    if (!storefrontId.isNullOrBlank()) {
-      result.success(storefrontId!!)
+    if (storefrontId == null) {
+      result.error("ERROR_FETCHING_STOREFRONT", "Storefront not fetched you", null)
       return
     }
-
-    if (musicUserToken.isNullOrBlank()) {
-      result.error("ERROR_FETCHING_STOREFRONT", "No valid musicUserToken provided", null)
-      return
-    }
-
-    val storefrontRepo = UserStorefrontRepository()
-
-    coroutineScope.launch {
-      val response = storefrontRepo.getStorefrontId(developerToken, musicUserToken!!)
-      response.fold(
-        {
-          storefrontId = it
-          result.success(storefrontId)
-        },
-        { result.error("ERROR_FETCHING_STOREFRONT", it.message, null) }
-      )
-    }
+    result.success(storefrontId!!)
   }
+
 
   @Keep
   @Suppress("unused", "UNUSED_PARAMETER")

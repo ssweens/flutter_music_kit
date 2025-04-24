@@ -26,8 +26,18 @@ repositories {
 }
 ```
 
-2. Call `initialize(developerToken, musicUserToken: [userToken])` method manually
-   before using the MusicKit instance.
+2. Add your apple developer teamId, keyId and base64-encoded key to your `AndroidManifest.xml`
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+      ...
+       <meta-data android:name="music_kit.teamId" android:value="<TEAM_ID>" />
+       <meta-data android:name="music_kit.keyId"  android:value="<KEY_ID>" />
+       <meta-data android:name="music_kit.key"    android:value="<BASE64_ENCODED_KEY>" />
+    </application>
+</manifest>
+```
 
 ### Example
 
