@@ -4,11 +4,11 @@ export 'package:music_kit_platform_interface/music_kit_platform_interface.dart'
     show
         //
         MusicAuthorizationStatus,
-        MusicAuthorizationStatusInitial,
         MusicAuthorizationStatusAuthorized,
         MusicAuthorizationStatusDenied,
         MusicAuthorizationStatusNotDetermined,
         MusicAuthorizationStatusRestricted,
+        MusicAuthorizationStatusExpired,
         //
         MusicSubscription,
         //
@@ -32,9 +32,6 @@ class MusicKit {
   static MusicKitPlatform get _platform {
     return MusicKitPlatform.instance;
   }
-
-  Future<void> initialize(String developerToken, {String? musicUserToken}) =>
-      _platform.initialize(developerToken, musicUserToken: musicUserToken);
 
   Future<MusicAuthorizationStatus> requestAuthorizationStatus({String? startScreenMessage}) =>
       _platform.requestAuthorizationStatus(startScreenMessage: startScreenMessage);

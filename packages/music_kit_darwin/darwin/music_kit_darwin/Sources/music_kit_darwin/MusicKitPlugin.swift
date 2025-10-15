@@ -50,9 +50,6 @@ public class MusicKitPlugin: NSObject, FlutterPlugin {
     }
     
     switch methodKey {
-    case .initialize:
-        result(nil)
-        
     case .authorizationStatus:
       authorizationStatus(result)
         

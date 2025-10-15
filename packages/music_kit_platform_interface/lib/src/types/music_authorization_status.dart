@@ -1,7 +1,5 @@
 sealed class MusicAuthorizationStatus {}
 
-class MusicAuthorizationStatusInitial extends MusicAuthorizationStatus {}
-
 class MusicAuthorizationStatusAuthorized extends MusicAuthorizationStatus {
   final String? musicUserToken;
 
@@ -13,3 +11,5 @@ class MusicAuthorizationStatusDenied extends MusicAuthorizationStatus {}
 class MusicAuthorizationStatusNotDetermined extends MusicAuthorizationStatus {}
 
 class MusicAuthorizationStatusRestricted extends MusicAuthorizationStatus {}
+
+class MusicAuthorizationStatusExpired extends MusicAuthorizationStatus {}

@@ -17,10 +17,6 @@ abstract class MusicKitPlatform extends PlatformInterface {
     _instance = instance;
   }
 
-  Future<void> initialize(String developerToken, {String? musicUserToken}) async {
-    throw UnimplementedError('initialize() has not been implemented.');
-  }
-
   Future<MusicAuthorizationStatus> requestAuthorizationStatus({String? startScreenMessage}) async {
     throw UnimplementedError('requestAuthorizationStatus() has not been implemented.');
   }
