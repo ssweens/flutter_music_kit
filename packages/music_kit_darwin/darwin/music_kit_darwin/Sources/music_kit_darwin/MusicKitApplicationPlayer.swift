@@ -47,21 +47,13 @@ extension MusicKitPlugin {
         
       case .song:
         let songs: Array<Song> = try decoded(json: itemObjects)
-        print("MusicKitApplicationPlayer.setQueue: Decoded \(songs.count) songs, first: \(songs.first?.title ?? "none")")
-        // Use array literal assignment instead of Queue(for:) which returns empty queue
+        // Use array literal assignment instead of Queue(for:) which returns empty queue on macOS
         if let firstSong = songs.first {
           musicPlayer.queue = [firstSong]
-          print("MusicKitApplicationPlayer.setQueue: Set first song, entries: \(musicPlayer.queue.entries.count)")
-          // Try inserting remaining songs
           if songs.count > 1 {
             let remaining = Array(songs.dropFirst())
             Task {
-              do {
-                try await musicPlayer.queue.insert(MusicItemCollection(remaining), position: .tail)
-                print("MusicKitApplicationPlayer.setQueue: Inserted \(remaining.count) more songs, total: \(musicPlayer.queue.entries.count)")
-              } catch {
-                print("MusicKitApplicationPlayer.setQueue: Failed to insert remaining songs: \(error)")
-              }
+              try? await musicPlayer.queue.insert(MusicItemCollection(remaining), position: .tail)
             }
           }
         }
