@@ -33,10 +33,32 @@ extension MusicKitPlugin {
   }
   
   func setQueue(itemType: String, itemObjects: Array<ResourceObject>, startingAt: Int? = nil, result: @escaping FlutterResult) {
+    let itemTypeEnum = MusicItemType(itemType)
+    
+    // Handle songs specially - needs async for queue insertion on macOS
+    if itemTypeEnum == .song {
+      Task {
+        do {
+          let songs: Array<Song> = try decoded(json: itemObjects)
+          // Use array literal assignment instead of Queue(for:) which returns empty queue on macOS
+          if let firstSong = songs.first {
+            musicPlayer.queue = [firstSong]
+            if songs.count > 1 {
+              let remaining = Array(songs.dropFirst())
+              try await musicPlayer.queue.insert(MusicItemCollection(remaining), position: .tail)
+            }
+          }
+          result(nil)
+        } catch {
+          result(FlutterError(code: kErrorPlay, message: error.localizedDescription))
+        }
+      }
+      return
+    }
+    
+    // Handle other types synchronously
     do {
-      let itemType = MusicItemType(itemType)
-
-      switch itemType {
+      switch itemTypeEnum {
       case .album:
         let albums: Array<Album> = try decoded(json: itemObjects)
         musicPlayer.setQueue(items: MusicItemCollection(albums), startingAt: startingAt != nil ? albums[startingAt!] : nil)
@@ -44,19 +66,6 @@ extension MusicKitPlugin {
       case .playlist:
         let playlists: Array<Playlist> = try decoded(json: itemObjects)
         musicPlayer.setQueue(items: MusicItemCollection(playlists), startingAt: startingAt != nil ? playlists[startingAt!] : nil)
-        
-      case .song:
-        let songs: Array<Song> = try decoded(json: itemObjects)
-        // Use array literal assignment instead of Queue(for:) which returns empty queue on macOS
-        if let firstSong = songs.first {
-          musicPlayer.queue = [firstSong]
-          if songs.count > 1 {
-            let remaining = Array(songs.dropFirst())
-            Task {
-              try? await musicPlayer.queue.insert(MusicItemCollection(remaining), position: .tail)
-            }
-          }
-        }
         
       case .musicVideo, .track:
         let tracks: Array<Track> = try decoded(json: itemObjects)
@@ -72,7 +81,6 @@ extension MusicKitPlugin {
       
       result(nil)
     } catch {
-      //
       result(FlutterError(code: kErrorPlay, message: error.localizedDescription))
     }
   }
