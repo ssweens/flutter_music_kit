@@ -38,6 +38,7 @@ func decoded<T: Decodable>(json: Any) throws -> T {
     decoder.dateDecodingStrategy = .iso8601
     return try decoder.decode(T.self, from: data)
   } catch {
+    print("JSONCodable.decoded: Failed to decode \(T.self): \(error)")
     throw JSONCodableError.invalidJSON
   }
 }
