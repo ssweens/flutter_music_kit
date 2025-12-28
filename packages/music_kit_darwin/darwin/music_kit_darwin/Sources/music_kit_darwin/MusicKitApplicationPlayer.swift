@@ -45,7 +45,11 @@ extension MusicKitPlugin {
         let playlists: Array<Playlist> = try decoded(json: itemObjects)
         musicPlayer.setQueue(items: MusicItemCollection(playlists), startingAt: startingAt != nil ? playlists[startingAt!] : nil)
         
-      case .song, .musicVideo, .track:
+      case .song:
+        let songs: Array<Song> = try decoded(json: itemObjects)
+        musicPlayer.setQueue(items: MusicItemCollection(songs), startingAt: startingAt != nil ? songs[startingAt!] : nil)
+        
+      case .musicVideo, .track:
         let tracks: Array<Track> = try decoded(json: itemObjects)
         musicPlayer.setQueue(items: MusicItemCollection(tracks), startingAt: startingAt != nil ? tracks[startingAt!] : nil)
         
