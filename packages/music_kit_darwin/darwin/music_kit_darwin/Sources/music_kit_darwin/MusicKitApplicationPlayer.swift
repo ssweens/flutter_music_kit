@@ -40,16 +40,21 @@ extension MusicKitPlugin {
       Task {
         do {
           let songs: Array<Song> = try decoded(json: itemObjects)
+          print("MusicKitApplicationPlayer.setQueue: Decoded \(songs.count) songs")
           // Use array literal assignment instead of Queue(for:) which returns empty queue on macOS
           if let firstSong = songs.first {
             musicPlayer.queue = [firstSong]
+            print("MusicKitApplicationPlayer.setQueue: Set first song: \(firstSong.title)")
             if songs.count > 1 {
               let remaining = Array(songs.dropFirst())
+              print("MusicKitApplicationPlayer.setQueue: Inserting \(remaining.count) remaining songs...")
               try await musicPlayer.queue.insert(MusicItemCollection(remaining), position: .tail)
+              print("MusicKitApplicationPlayer.setQueue: Insert completed, queue now has \(musicPlayer.queue.entries.count) entries")
             }
           }
           result(nil)
         } catch {
+          print("MusicKitApplicationPlayer.setQueue: ERROR - \(error.localizedDescription)")
           result(FlutterError(code: kErrorPlay, message: error.localizedDescription))
         }
       }
